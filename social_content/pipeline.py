@@ -37,6 +37,7 @@ PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 
 X_LIMIT = 280
 BLOG_MIN_CHARS = 500
+MAX_FORMAT_RETRIES = 2  # 규격 위반 시 피드백을 붙여 다시 부르는 횟수
 
 TONE_LABELS = {"friendly": "A안 · 친근한 톤", "professional": "B안 · 전문적인 톤"}
 
@@ -85,6 +86,44 @@ def check_format(platform_key: str, data: dict) -> list[str]:
     return warnings
 
 
+def generate_one(client, platform, topic: str, tone: str, brand: str, label: str) -> dict:
+    """규격을 지킬 때까지 최대 MAX_FORMAT_RETRIES 회 다시 부른다.
+
+    프롬프트에 규격을 적어도 모델은 가끔 어긴다. 어긴 항목을 그대로
+    피드백으로 붙여 다시 시키면 대부분 고쳐 온다. 끝까지 안 되면
+    위반이 가장 적은 결과를 채택한다 — 아무것도 없는 것보다 낫다.
+    """
+    base_prompt = build_prompt(platform, topic, tone, brand)
+    prompt = base_prompt
+    best: dict | None = None
+    for attempt in range(1 + MAX_FORMAT_RETRIES):
+        try:
+            data = client.complete_json(prompt, platform.schema)
+        except AiCallError:
+            if best is None:
+                raise  # 첫 시도부터 실패면 기존처럼 단계 실패로 올린다
+            break  # 재시도 중 통신 실패면 지금까지의 최선을 쓴다
+        data["_warnings"] = check_format(platform.key, data)
+        if not data["_warnings"]:
+            return data
+        if best is None or len(data["_warnings"]) < len(best["_warnings"]):
+            best = data
+        if attempt < MAX_FORMAT_RETRIES:
+            logger.warning(
+                "  규격 위반 — %s (%d/%d 재시도): %s",
+                label, attempt + 1, MAX_FORMAT_RETRIES, ", ".join(data["_warnings"]),
+            )
+            prompt = (
+                f"{base_prompt}\n\n"
+                f"[재작성 요청]\n"
+                f"직전 결과가 규격을 어겼습니다: {', '.join(data['_warnings'])}.\n"
+                f"위 규격을 정확히 지켜 처음부터 다시 작성하세요."
+            )
+    assert best is not None
+    logger.warning("  규격 위반 유지 — %s: %s", label, ", ".join(best["_warnings"]))
+    return best
+
+
 def generate_texts(client, topic: str, brand: str, tones: list[str], result: Result) -> None:
     """플랫폼 × 톤 조합마다 한 번씩 LLM 을 부른다."""
     for tone in tones:
@@ -93,16 +132,10 @@ def generate_texts(client, topic: str, brand: str, tones: list[str], result: Res
             label = f"{platform.name}/{tone}"
             logger.info("[2] 텍스트 생성 — %s", label)
             try:
-                data = client.complete_json(
-                    build_prompt(platform, topic, tone, brand), platform.schema
-                )
+                data = generate_one(client, platform, topic, tone, brand, label)
             except AiCallError as exc:
                 result.fail(f"텍스트 생성 {label}", str(exc))
                 continue
-
-            data["_warnings"] = check_format(platform.key, data)
-            if data["_warnings"]:
-                logger.warning("  규격 위반 — %s: %s", label, ", ".join(data["_warnings"]))
             result.contents[tone][platform.key] = data
 
 
