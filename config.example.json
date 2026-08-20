@@ -1,0 +1,11 @@
+{
+  "_comment": "config.json 으로 복사해 쓰세요. API 키는 여기가 아니라 .env 에 둡니다.",
+  "brand": "VisitHolyKorea — 한국 가톨릭 성지 208곳을 안내하는 순례 웹·모바일 서비스. 신앙을 앞세우지 않고 '쉼과 걷기'를 먼저 말한다. 차분하고 경건하되 무겁지 않게, 낯선 사람에게도 문턱이 낮게. 메인 컬러는 딥 네이비 #1E3A8A.",
+  "tones": ["friendly"],
+  "ai": {
+    "provider": "gemini",
+    "api_key_env": "GEMINI_API_KEY",
+    "timeout_sec": 120
+  },
+  "output_dir": "output"
+}
