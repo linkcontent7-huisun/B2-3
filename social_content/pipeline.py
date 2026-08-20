@@ -270,10 +270,20 @@ def render_markdown(result: Result) -> str:
     return "\n".join(lines)
 
 
+def unique_dir(base_dir: Path, name: str) -> Path:
+    """이미 있으면 -2, -3 … 을 붙인다. 같은 주제를 다시 돌려도 이전 결과를 지키기 위해."""
+    out = base_dir / name
+    suffix = 2
+    while out.exists():
+        out = base_dir / f"{name}-{suffix}"
+        suffix += 1
+    return out
+
+
 def save(result: Result, base_dir: Path) -> Path:
     """플랫폼별로 구분해 저장한다. JSON 은 기계용, 마크다운은 사람용."""
     stamp = result.generated_at[:10].replace("-", "")
-    out = base_dir / f"{stamp}-{slugify(result.topic)}"
+    out = unique_dir(base_dir, f"{stamp}-{slugify(result.topic)}")
     out.mkdir(parents=True, exist_ok=True)
 
     payload = {

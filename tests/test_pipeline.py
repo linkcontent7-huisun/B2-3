@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -114,6 +115,39 @@ class GenerateOneRetryTest(unittest.TestCase):
         self.assertEqual(data["_warnings"], [])
         self.assertIn("본문 500자 미만", client.prompts[1])
         self.assertIn("소제목 3개 미만", client.prompts[1])
+
+
+class SaveDedupTest(unittest.TestCase):
+    """같은 주제를 다시 돌려도 이전 결과를 덮어쓰지 않는다."""
+
+    def make_result(self):
+        return pipeline.Result(
+            topic="가을 순례길", brand="브랜드", generated_at="2026-08-20T10:00:00"
+        )
+
+    def test_same_topic_gets_suffixed_dirs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            first = pipeline.save(self.make_result(), base)
+            second = pipeline.save(self.make_result(), base)
+            third = pipeline.save(self.make_result(), base)
+            self.assertEqual(first.name, "20260820-가을-순례길")
+            self.assertEqual(second.name, "20260820-가을-순례길-2")
+            self.assertEqual(third.name, "20260820-가을-순례길-3")
+            # 세 폴더 모두 결과 파일을 온전히 가진다
+            for out in (first, second, third):
+                self.assertTrue((out / "result.json").exists())
+                self.assertTrue((out / "콘텐츠.md").exists())
+
+    def test_different_topic_keeps_plain_name(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            pipeline.save(self.make_result(), base)
+            other = pipeline.Result(
+                topic="겨울 성지", brand="브랜드", generated_at="2026-08-20T10:00:00"
+            )
+            out = pipeline.save(other, base)
+            self.assertEqual(out.name, "20260820-겨울-성지")
 
 
 if __name__ == "__main__":
