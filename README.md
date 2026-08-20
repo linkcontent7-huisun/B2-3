@@ -165,6 +165,9 @@ python main.py
 완전 자동 업로드는 노션 통합 토큰이 필요해 붙이는 자리만 비워 두었습니다
 ([`docs/워크플로우.md`](docs/워크플로우.md) 참고). 토큰 없이도 워크플로우 전체가 돌아야 하기 때문입니다.
 
+**실제 제출 페이지:** <https://app.notion.com/p/3c2be80e553b81fe9a5afc008bd0d7e4>
+프로젝트 개요 · 팀 구성원 역할 · 개인별 작업 요약 · 플랫폼별 결과물이 담겨 있습니다.
+
 ---
 
 ## 노코드 툴로 옮기려면
@@ -206,3 +209,15 @@ Python 3.10 이상. 실제 검증은 **Python 3.14.2 / Windows 11**.
 
 API 키는 코드에도 `config.json` 에도 적지 않습니다.
 `.env`(또는 환경 변수)에만 두고, 설정에는 *어느 환경 변수를 볼지*만 적습니다.
+
+---
+
+## 문서
+
+| 문서 | 내용 |
+| --- | --- |
+| [`docs/워크플로우.md`](docs/워크플로우.md) | 단계별 역할과 연결 구조 |
+| [`docs/프롬프트-템플릿.md`](docs/프롬프트-템플릿.md) | 초안 → 수정 → 최종 |
+| [`docs/AB테스트.md`](docs/AB테스트.md) | 보너스 — 톤 A/B 비교 |
+| [`docs/requirements-checklist.md`](docs/requirements-checklist.md) | 명세 요구사항 대조표 |
+| [`samples/콘텐츠.md`](samples/콘텐츠.md) | 생성된 콘텐츠 전문 |
