@@ -32,7 +32,25 @@ def load_dotenv(path: Path | None = None) -> None:
         if not line or line.startswith("#") or "=" not in line:
             continue
         key, value = line.split("=", 1)
-        os.environ.setdefault(key.strip(), value.strip().strip("'\""))
+        key, value = key.strip(), value.strip().strip("'\"")
+        # setdefault 만 쓰면 값이 빈 문자열인 환경 변수도 "이미 있음"으로 보아
+        # .env 의 진짜 값을 덮지 못한다. CI 나 셸에 `GEMINI_API_KEY=` 가 남아 있으면
+        # .env 에 키를 제대로 넣어 두고도 "키가 없습니다" 를 보게 된다.
+        if not os.environ.get(key, "").strip():
+            os.environ[key] = value
+
+
+def _number(section: dict, key: str, default, cast):
+    """설정에서 숫자를 읽는다. 숫자가 아니면 ConfigError 로 알린다.
+
+    `int(...)` 를 그대로 쓰면 `"120초"` 같은 값에서 ValueError 가 나는데,
+    main 은 ConfigError 만 잡으므로 이것만 raw traceback 으로 끝난다.
+    """
+    raw = section.get(key, default)
+    try:
+        return cast(raw)
+    except (TypeError, ValueError):
+        raise ConfigError(f"{key} 는 숫자여야 합니다: {raw!r}") from None
 
 
 @dataclass(frozen=True)
@@ -78,11 +96,18 @@ def load_config(path: str | Path | None = None) -> Config:
     if provider not in {"gemini", "openai"}:
         raise ConfigError(f"ai.provider 는 gemini 또는 openai 여야 합니다: {provider!r}")
 
+    # tones·provider 는 값을 검사하는데 timeout 만 빠져 있었다. 0 이나 음수를
+    # 그대로 넘기면 requests 가 ValueError 를 던지는데, 그건 RequestException 이
+    # 아니라 재시도 처리에 걸리지 않는다.
+    timeout_sec = _number(ai, "timeout_sec", 120, int)
+    if timeout_sec < 1:
+        raise ConfigError(f"ai.timeout_sec 는 1 이상이어야 합니다: {timeout_sec}")
+
     return Config(
         brand=brand,
         tones=tones,
         llm_provider=provider,
         llm_api_key_env=str(ai.get("api_key_env", "GEMINI_API_KEY")),
-        timeout_sec=int(ai.get("timeout_sec", 120)),
+        timeout_sec=timeout_sec,
         output_dir=(ROOT / str(data.get("output_dir", "output"))).resolve(),
     )

@@ -69,7 +69,15 @@ def _post(url: str, *, headers: dict, payload: dict, timeout: int) -> dict:
             last_error = f"네트워크 오류: {exc}"
         else:
             if response.status_code == 200:
-                return response.json()
+                # 200 인데 본문이 JSON 이 아닌 경우가 있다(프록시가 HTML 오류 페이지를
+                # 200 으로 실어 보낼 때). 그대로 두면 AiCallError 가 아닌 예외라
+                # 호출부의 모델 폴백이 건너뛰어진다.
+                try:
+                    return response.json()
+                except ValueError:
+                    raise AiCallError(
+                        f"HTTP 200 인데 응답이 JSON 이 아닙니다: {response.text[:120]!r}"
+                    ) from None
             last_error = _describe_http_error(response)
             if response.status_code not in RETRY_STATUSES:
                 raise AiCallError(last_error)
@@ -143,8 +151,32 @@ class GeminiClient:
             if not texts:
                 errors.append(f"{model}: 응답에 텍스트가 없습니다")
                 continue
-            return _parse_json_text("".join(texts))
+            # 파싱 실패도 다음 모델로 넘긴다. 빈 응답은 위에서 continue 로 넘기면서
+            # 정작 "JSON 이 깨져 온" 경우만 여기서 루프를 끝내면 앞뒤가 안 맞는다.
+            try:
+                return _parse_json_text("".join(texts))
+            except AiCallError as exc:
+                errors.append(f"{model}: {exc}")
+                continue
         raise AiCallError(" / ".join(errors) or "호출 가능한 모델이 없습니다.")
+
+
+def _openai_text(data: dict) -> str:
+    """OpenAI 응답에서 본문을 꺼낸다.
+
+    콘텐츠 필터에 걸리면 200 과 함께 choices 가 빈 배열로 온다. 그대로 인덱싱하면
+    IndexError 가 나는데, AiCallError 가 아니라서 다음 모델로 넘어가지 못한다.
+    """
+    choices = data.get("choices") or []
+    if not choices:
+        raise AiCallError("응답에 choices 가 없습니다 (콘텐츠 필터에 걸렸을 수 있습니다)")
+    content = (choices[0].get("message") or {}).get("content")
+    if not content:
+        finish = choices[0].get("finish_reason")
+        raise AiCallError(
+            f"응답에 텍스트가 없습니다 (종료 사유: {finish})" if finish else "응답에 텍스트가 없습니다"
+        )
+    return content
 
 
 class OpenAiClient:
@@ -176,11 +208,11 @@ class OpenAiClient:
                     },
                     timeout=self._timeout,
                 )
+                self.last_model = model
+                return _parse_json_text(_openai_text(data))
             except AiCallError as exc:
                 errors.append(f"{model}: {exc}")
                 continue
-            self.last_model = model
-            return _parse_json_text(data["choices"][0]["message"]["content"])
         raise AiCallError(" / ".join(errors) or "호출 가능한 모델이 없습니다.")
 
 

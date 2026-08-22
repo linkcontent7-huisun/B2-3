@@ -87,9 +87,14 @@ def main(argv: list[str] | None = None) -> int:
     print(f"[1] 주제: {topic}")
     print(f"    톤: {', '.join(tones)} · 플랫폼: 인스타그램, 블로그, X\n")
 
-    result, out = pipeline.run(
-        client, topic, brand, tones, config.output_dir, with_image=not args.no_image
-    )
+    try:
+        result, out = pipeline.run(
+            client, topic, brand, tones, config.output_dir, with_image=not args.no_image
+        )
+    except pipeline.SaveError as exc:
+        print(f"\n❌ {exc}")
+        print("   출력 폴더 권한과 남은 용량을 확인하세요.")
+        return 1
 
     print("\n" + "─" * 60)
     print(f"  저장 위치 : {out}")
