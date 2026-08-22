@@ -41,6 +41,10 @@ BLOG_MIN_CHARS = 500
 TONE_LABELS = {"friendly": "A안 · 친근한 톤", "professional": "B안 · 전문적인 톤"}
 
 
+class SaveError(Exception):
+    """결과를 파일로 남기지 못했을 때. 사용자에게 그대로 보여줄 문장을 담는다."""
+
+
 @dataclass
 class Result:
     topic: str
@@ -98,6 +102,13 @@ def generate_texts(client, topic: str, brand: str, tones: list[str], result: Res
                 )
             except AiCallError as exc:
                 result.fail(f"텍스트 생성 {label}", str(exc))
+                continue
+            except Exception as exc:
+                # AiCallError 만 잡으면 예상 못 한 예외 하나가 남은 플랫폼까지 날린다.
+                # 여섯 조합 중 하나가 이상해도 나머지 다섯은 나와야 한다.
+                result.fail(
+                    f"텍스트 생성 {label}", f"예상하지 못한 오류 ({type(exc).__name__}): {exc}"
+                )
                 continue
 
             data["_warnings"] = check_format(platform.key, data)
@@ -288,7 +299,19 @@ def run(
             result.fail("이미지 생성", str(exc))
 
     logger.info("[4] 결과 저장")
-    out = save(result, base_dir)
+    # 저장이 마지막 관문이다. 여기서 터지면 만들어 낸 텍스트가 통째로 사라진다.
+    # 명세의 "한 단계가 실패해도 다음 단계는 진행한다" 를 정작 저장이 깨면 안 된다.
+    try:
+        out = save(result, base_dir)
+    except OSError as exc:
+        result.fail("결과 저장", str(exc))
+        raise SaveError(f"결과를 저장하지 못했습니다: {exc}") from None
+
     if image_bytes:
-        (out / "cover.png").write_bytes(image_bytes)
+        try:
+            (out / "cover.png").write_bytes(image_bytes)
+        except OSError as exc:
+            # 이미지 한 장 때문에 텍스트 결과까지 잃을 이유는 없다.
+            result.fail("이미지 저장", str(exc))
+            result.image = None
     return result, out
